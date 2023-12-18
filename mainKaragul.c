@@ -2,14 +2,43 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <string.h>
  
 #define MAX_LINE 80 /* 80 chars per line, per command, should be enough. */
+#define MAX_PATH 1024
+#define CREATE_FLAGS (O_WRONLY | O_CREAT | O_APPEND)
+#define CREATE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+
+void setup(char inputBuffer[], char *args[],int *background);
+void runCommand(char *args[], int background);
+void internalCommand(char *args[]);
  
+int main(void)
+{
+    char inputBuffer[MAX_LINE]; /*buffer to hold command entered */
+    int background; /* equals 1 if a command is followed by '&' */
+    char *args[MAX_LINE/2 + 1]; /*command line arguments */
+    while (1){
+        background = 0;
+        printf("myshell: ");
+        /*setup() calls exit() when Control-D is entered */
+        setup(inputBuffer, args, &background);
+                       
+
+
+
+    }
+            
+}
+
+
+
 /* The setup function below will not return any value, but it will just: read
 in the next command line; separate it into distinct arguments (using blanks as
 delimiters), and set the args array entries to point to the beginning of what
 will become null-terminated, C-style strings. */
-
 void setup(char inputBuffer[], char *args[],int *background)
 {
     int length, /* # of characters in the command line */
@@ -71,38 +100,23 @@ void setup(char inputBuffer[], char *args[],int *background)
 		    *background  = 1;
                     inputBuffer[i-1] = '\0';
 		}
-	} /* end of switch */
-     }    /* end of for */
+	    } /* end of switch */
+    }    /* end of for */
      args[ct] = NULL; /* just in case the input line was > 80 */
 
 	for (i = 0; i <= ct; i++)
 		printf("args %d = %s\n",i,args[i]);
 } /* end of setup routine */
- 
-int main(void)
+void runCommand(char *args[], int background)
 {
-            char inputBuffer[MAX_LINE]; /*buffer to hold command entered */
-            int background; /* equals 1 if a command is followed by '&' */
-            char *args[MAX_LINE/2 + 1]; /*command line arguments */
-            while (1){
-                        background = 0;
-                        printf("myshell: ");
-                        /*setup() calls exit() when Control-D is entered */
-                        setup(inputBuffer, args, &background);
-                       
-                        /** the steps are:
-                        (1) fork a child process using fork()
-                        (2) the child process will invoke execv()
-						(3) if background == 0, the parent will wait,
-                        otherwise it will invoke the setup() function again. */
-
-                        pid_t childpid;
-                        childpid = fork();
-
+    pid_t childpid;
+    childpid = fork();
+                        //fork failed
                         if (childpid == -1) {
                             perror("Failed to fork");
                             return 1;
                         }
+                        //child process
                         else if (childpid==0)
                         {
                             if (execv(args[0], args) < 0) {
@@ -110,18 +124,19 @@ int main(void)
                                 return 1;
                             }
                         }
-                        else if (background == 0)
-                        {
-                            wait(NULL);
+                        //parent process
+                        else {
+                            //foreground process
+                            if (background == 0) {
+                                //if the process is not background process so it is foreground process
+                                // wait for the child process to terminate
+                                waitpid(childpid, NULL, 0);
+                                printf("Foreground process %d terminated\n", childpid); //print the terminated process
+
+                            }
+                            //background process
+                            else {
+                                printf("Background process started with PID: %d\n", childpid);
+                            }
                         }
-                        else if (background == 1)
-                        {
-                            /* code */
-                        }
-                        
-
-
-
-            }
-            
 }
