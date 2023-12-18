@@ -1,7 +1,0 @@
-.vscode/launch.json
-mainSetup.dSYM/Contents/Info.plist
-mainSetup.dSYM/Contents/Resources/DWARF/mainSetup
-.gitignore
-mainSetup.dSYM/Contents/Resources/Relocations/aarch64/mainSetup.yml
-.DS_Store
-.vscode/tasks.json
