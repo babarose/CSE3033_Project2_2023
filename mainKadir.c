@@ -4,7 +4,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <errno.h> 
+#include <signal.h>
+#include <errno.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARG_SIZE 64
@@ -13,7 +14,22 @@ void setup(char inputBuffer[], char *args[], int *background);
 void executeCommand(char **args, int background);
 int findExecutable(const char *command, char *fullPath);
 
+volatile sig_atomic_t isRunningInBackground = 0;
+
+void handleCtrlZ(int signo) {
+    if (signo == SIGTSTP) {
+        if (isRunningInBackground) {
+            printf("\nCtrl+Z received. Stopping the current process.\n");
+            kill(getpid(), SIGSTOP); // Sadece ön plana alınan işlemi duraklat
+        } else {
+            printf("\nNo background process to stop.\n");
+        }
+    }
+}
+
 int main() {
+    signal(SIGTSTP, handleCtrlZ);
+
     char inputBuffer[MAX_INPUT_SIZE];
     char *args[MAX_ARG_SIZE];
     int background;
@@ -82,6 +98,7 @@ void setup(char inputBuffer[], char *args[], int *background) {
     }
 
     args[ct] = NULL;
+    isRunningInBackground = *background; // isRunningInBackground'ı ayarla
 }
 
 void executeCommand(char **args, int background) {
@@ -91,6 +108,8 @@ void executeCommand(char **args, int background) {
     pid = fork();
 
     if (pid == 0) {
+        isRunningInBackground = 1;
+
         char fullPath[256];
 
         if (findExecutable(args[0], fullPath)) {
