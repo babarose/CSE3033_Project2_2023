@@ -8,6 +8,8 @@
 #include <errno.h>
 #include <dirent.h>
 #include <ctype.h>
+#include <fcntl.h>
+
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARG_SIZE 64
@@ -20,6 +22,8 @@ int findExecutable(const char *command, char *fullPath);
 void searchFiles(const char *searchString, int recursive);
 void searchFilesKaragul(char *searchString, int recursive);
 void searchFilesKaragulHelper(const char *filePath, const char *searchString);
+void redirection(char **args);
+
 volatile sig_atomic_t isRunningInBackground = 0;
 
 void handleCtrlZ(int signo)
@@ -56,6 +60,8 @@ int main()
         fflush(stdout);
         setup(inputBuffer, args, &background);
 
+
+        //search
         if (strcmp(args[0], "search") == 0)
         {
             // Handle search command separately
@@ -80,13 +86,14 @@ int main()
                 }
                 searchFilesKaragul(searchString, recursive);
             }
-            else
+            else 
             {
-                printf("Usage: search -r filename or search filename\n");
+                printf("Usage: search [-r] <searchedString> \n");
             }
         }
-        else
+        else //part A
         {
+            //redirection(args);
             executeCommand(args, background);
         }
     }
@@ -170,8 +177,9 @@ void executeCommand(char **args, int background)
     if (pid == 0)
     {
         // Child process
-
         char fullPath[256];
+
+
 
         if (findExecutable(args[0], fullPath))
         {
@@ -323,4 +331,61 @@ void searchFilesKaragul(char *searchString, int recursive)
     }
 
     closedir(dir);
+}
+
+
+void redirection(char **args){
+    if (args[MAX_ARG_SIZE - 2] == NULL){
+        //no redirection
+    }else if (strstr(args[MAX_ARG_SIZE - 2], ">") != NULL){
+        //redirect output to file
+        char *outputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY);
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        dup2(redirection_fd, STDOUT_FILENO);
+        close(redirection_fd);
+
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove ">" from arguments
+    }else if (strstr(args[MAX_ARG_SIZE - 2], ">>") != NULL){
+        //redirect output to file - overwrite
+        char *outputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(outputFile, O_CREAT | O_APPEND | O_WRONLY);
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        dup2(redirection_fd, STDOUT_FILENO);
+        close(redirection_fd);
+
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove ">>" from arguments
+    }else if(strstr(args[MAX_ARG_SIZE - 2], "2>") != NULL){
+        //redirect error to file
+        char *outputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY , 0666);
+
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        dup2(redirection_fd, STDOUT_FILENO);
+        close(redirection_fd);
+
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove "2>" from arguments
+
+    }else if(strstr(args[MAX_ARG_SIZE - 2], "<") != NULL){
+        //redirect input to file
+        char *inputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(inputFile, O_RDONLY);
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        dup2(redirection_fd, STDIN_FILENO);
+        close(redirection_fd);
+
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove "<" from arguments
+    }
 }
