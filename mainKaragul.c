@@ -91,7 +91,7 @@ void setup(char inputBuffer[], char *args[],int *background)
   and disregard the -1 value */
     if ( (length < 0) && (errno != EINTR) ) {
         perror("error reading the command");
-	exit(-1);           /* terminate with error code of -1 */
+	exit(1);           /* terminate with error code of -1 */
     }
 
 	printf(">>%s<<",inputBuffer);
