@@ -19,6 +19,7 @@ void executeCommand(char **args, int background);
 int findExecutable(const char *command, char *fullPath);
 void searchFiles(const char *searchString, int recursive);
 void searchFilesKaragul(char *searchString, int recursive);
+void searchFilesKaragulHelper(const char *filePath, const char *searchString);
 volatile sig_atomic_t isRunningInBackground = 0;
 
 void handleCtrlZ(int signo) {
@@ -186,6 +187,30 @@ int findExecutable(const char *command, char *fullPath) {
     return 0; // Bulunamadı
 }
 
+void searchFilesKaragulHelper(const char *filePath, const char *searchString) {
+    FILE *file = fopen(filePath, "r");
+    if (file == NULL) {
+        perror("fopen");
+        return;
+    }
+
+    char line[MAX_LINE_SIZE];
+    int lineNumber = 0;
+
+    // Sadece dosya adını al
+    const char *fileName = strrchr(filePath, '/');
+    fileName = (fileName != NULL) ? (fileName + 1) : filePath;
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+        lineNumber++;
+        if (strstr(line, searchString) != NULL) {
+            printf("%d: \t./%s \t-> \t%s", lineNumber, fileName, line);
+        }
+    }
+
+    fclose(file);
+}
+
 void searchFilesKaragul(char *searchString, int recursive) {
     DIR *dir;
     struct dirent *entry;
@@ -203,68 +228,40 @@ void searchFilesKaragul(char *searchString, int recursive) {
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {
-            // Dosyanın adını sadece kopyala
+            // Dosyanın tam yolu
             char filePath[MAX_FILE_NAME_SIZE];
-            strncpy(filePath, entry->d_name, sizeof(filePath) - 1);
-            filePath[sizeof(filePath) - 1] = '\0';
+            strcpy(filePath, currentDir);
+            strcat(filePath, "/");
+            strcat(filePath, entry->d_name);
 
-          
-                FILE *file = fopen(filePath, "r");
-                if (file == NULL) {
-                    perror("fopen");
-                    return;
-                }
-                char line[MAX_LINE_SIZE];
-                int lineNumber = 0;
-
-                while (fgets(line, sizeof(line), file) != NULL) {
-                    lineNumber++;
-                    if (strstr(line, searchString) != NULL) {
-                        printf("%d: \t%s \t-> \t%s", lineNumber, filePath, line);
-                    }
-                }
-
-                fclose(file);
-            
-        } else if (recursive && entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                char filePath[MAX_FILE_NAME_SIZE];
-                strncpy(filePath, entry->d_name, sizeof(filePath) - 1);
-                filePath[sizeof(filePath) - 1] = '\0';
-                printf("recursive e girebiliyor muyummm\n");
-              // Dosya uzantısını kontrol et
+            // Dosya uzantısını kontrol et
             size_t len = strlen(filePath);
-            if ((len > 2) && (toupper(filePath[len - 2]) == '.') &&
-                ((filePath[len - 1] == 'c') || (filePath[len - 1] == 'C') || 
-                 (filePath[len - 1] == 'h') || (filePath[len - 1] == 'H'))) {
-                // Geçerli dosya uzantısı, .c, .C, .h, veya .H
-                printf("dosya uzantısı c C h H biri bunlardan");
-                FILE *file = fopen(filePath, "r");
-                if (file == NULL) {
-                    perror("fopen");
-                    return;
-                }
-                
-                // Recursively search subdirectories
-                if (chdir(entry->d_name) == -1) {
-                    perror("chdir");
-                    return;
-                }
-                
-                searchFilesKaragul(searchString, recursive);
-                
-                if (chdir("..") == -1) {
-                    perror("chdir");
-                    return;
-                }
+            if ((len > 2) &&
+                ((filePath[len - 2] == '.') &&
+                 ((filePath[len - 1] == 'c') || (filePath[len - 1] == 'C') ||
+                  (filePath[len - 1] == 'h') || (filePath[len - 1] == 'H')))) {
+                searchFilesKaragulHelper(filePath, searchString);
+            }
+        } else if (recursive && entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            char subDir[MAX_FILE_NAME_SIZE];
+            strcpy(subDir, currentDir);
+            strcat(subDir, "/");
+            strcat(subDir, entry->d_name);
+
+            // Recursively search subdirectories
+            if (chdir(subDir) == -1) {
+                perror("chdir");
+                return;
+            }
+
+            searchFilesKaragul(searchString, recursive);
+
+            if (chdir("..") == -1) {
+                perror("chdir");
+                return;
             }
         }
     }
 
     closedir(dir);
 }
-
-        
-
-
-
-
