@@ -1,244 +1,286 @@
 #include <stdio.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <signal.h>
- 
-#define MAX_LINE 80 /* 80 chars per line, per command, should be enough. */
-#define MAX_PATH 1024
-#define CREATE_FLAGS (O_WRONLY | O_CREAT | O_APPEND)
-#define CREATE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
-#define MAX_BOOKMARKS 10
-#define MAX_COMMAND_LENGTH 256
-char bookmarks[MAX_BOOKMARKS][MAX_COMMAND_LENGTH];
-int bookmarkCount = 0;
-
-void setup(char inputBuffer[], char *args[],int *background);
-void runCommand(char *args[], int background);
-void internalCommand(char *args[], int background, pid_t childpid);
-
-void stop(int background , pid_t childpid);
-void stopForegroundProcess(pid_t childpid);
-
-void search(char *args[], int background);
-void searchFiles(const char *dirname, const char *searchString , int recursive);
+#include <errno.h>
+#include <dirent.h>
+#include <ctype.h>
+#include <fcntl.h>
 
 
-void bookmark(char *args[], int background);
-void listbookmarks();
-void addBookmark(const char *command,char *args[], int background);
-void deleteBookmark(int index);
-void executeBookmark(int index);
+#define MAX_INPUT_SIZE 1024
+#define MAX_ARG_SIZE 64
+#define MAX_FILE_NAME_SIZE 1024
+#define MAX_LINE_SIZE 512
 
+void setup(char inputBuffer[], char *args[], int *background);
+void executeCommand(char **args, int background);
+int findExecutable(const char *command, char *fullPath);
+void searchFiles(const char *searchString, int recursive);
+void searchFilesKaragul(char *searchString, int recursive);
+void searchFilesKaragulHelper(const char *filePath, const char *searchString);
+void redirection(char **args);
 
+volatile sig_atomic_t isRunningInBackground = 0;
 
-void exit(char *args[], int background);
-
-
-pid_t childpid; /* variable to store the child's pid */
- 
-int main(void)
+void handleCtrlZ(int signo)
 {
-    char inputBuffer[MAX_LINE]; /*buffer to hold command entered */
-    int background; /* equals 1 if a command is followed by '&' */
-    char *args[MAX_LINE/2 + 1]; /*command line arguments */
-    while (1){
-        background = 0;
-        printf("myshell: ");
-        printf("My process ID is: %d\n", getpid());
-        printf("My parent's process ID is: %d\n", getppid());
-        /*setup() calls exit() when Control-D is entered */
-        setup(inputBuffer, args, &background);               
-        internalCommand(args, background, childpid);
-    }
-            
-}
-
-
-
-/* The setup function below will not return any value, but it will just: read
-in the next command line; separate it into distinct arguments (using blanks as
-delimiters), and set the args array entries to point to the beginning of what
-will become null-terminated, C-style strings. */
-void setup(char inputBuffer[], char *args[],int *background)
-{
-    int length, /* # of characters in the command line */
-        i,      /* loop index for accessing inputBuffer array */
-        start,  /* index where beginning of next command parameter is */
-        ct;     /* index of where to place the next parameter into args[] */
-    
-    ct = 0;
-        
-    /* read what the user enters on the command line */
-    length = read(STDIN_FILENO,inputBuffer,MAX_LINE);  
-
-    /* 0 is the system predefined file descriptor for stdin (standard input),
-       which is the user's screen in this case. inputBuffer by itself is the
-       same as &inputBuffer[0], i.e. the starting address of where to store
-       the command that is read, and length holds the number of characters
-       read in. inputBuffer is not a null terminated C-string. */
-
-    start = -1;
-    if (length == 0)
-        exit(0);            /* ^d was entered, end of user command stream */
-
-/* the signal interrupted the read system call */
-/* if the process is in the read() system call, read returns -1
-  However, if this occurs, errno is set to EINTR. We can check this  value
-  and disregard the -1 value */
-    if ( (length < 0) && (errno != EINTR) ) {
-        perror("error reading the command");
-	exit(1);           /* terminate with error code of -1 */
-    }
-
-	printf(">>%s<<",inputBuffer);
-    for (i=0;i<length;i++){ /* examine every character in the inputBuffer */
-
-        switch (inputBuffer[i]){
-	    case ' ':
-	    case '\t' :               /* argument separators */
-		if(start != -1){
-                    args[ct] = &inputBuffer[start];    /* set up pointer */
-		    ct++;
-		}
-                inputBuffer[i] = '\0'; /* add a null char; make a C string */
-		start = -1;
-		break;
-
-            case '\n':                 /* should be the final char examined */
-		if (start != -1){
-                    args[ct] = &inputBuffer[start];     
-		    ct++;
-		}
-                inputBuffer[i] = '\0';
-                args[ct] = NULL; /* no more arguments to this command */
-		break;
-
-	    default :             /* some other character */
-		if (start == -1)
-		    start = i;
-                if (inputBuffer[i] == '&'){
-		    *background  = 1;
-                    inputBuffer[i-1] = '\0';
-		}
-	    } /* end of switch */
-    }    /* end of for */
-     args[ct] = NULL; /* just in case the input line was > 80 */
-
-	for (i = 0; i <= ct; i++)
-		printf("args %d = %s\n",i,args[i]);
-} /* end of setup routine */
-void runCommand(char *args[], int background)
-{
-  
-    childpid = fork();
-                        //fork failed
-                        if (childpid == -1) {
-                            perror("Failed to fork");
-                            return 1;
-                        }
-                        //child process
-                        else if (childpid==0)
-                        {
-                            if (execv(args[0], args) < 0) {
-                                perror("Error on the exec call");
-                                return 1;
-                            }
-                        }
-                        //parent process
-                        else {
-                            //foreground process
-                            if (background == 0) {
-                                //if the process is not background process so it is foreground process
-                                // wait for the child process to terminate
-                                waitpid(childpid, NULL, 0);
-                                printf("Foreground process %d terminated\n", childpid); //print the terminated process
-
-                            }
-                            //background process
-                            else {
-                                printf("Background process started with PID: %d\n", childpid);
-                            }
-                        }
-}
-
-void internalCommand(char *args[], int background, pid_t childpid){
-    if (args[0] != NULL){
-            if (strcmp(args[0], "^Z") == 0)
-            {
-                // Handle ^Z command
-                stop(background,childpid);
-            }
-            else if (strcmp(args[0], "search") == 0)
-            {
-                // Handle search command
-                const char *searchString = argv[1];
-                int recursive = (argc > 2 && strcmp(argv[2], "-r") == 0);
-                search(searchString, recursive);
-            }
-            else if (strcmp(args[0], "bookmark") == 0)
-            {
-                // Handle bookmark command
-
-                bookmark(args, background);
-            }
-            else if (strcmp(args[0], "exit") == 0)
-            {
-                // Handle exit command
-
-                exit(args, background);
-            }
-            else
-            {
-                // For non-internal commands, run the command as usual
-                runCommand(args, background);
-            }
-        }
-}
-
-void stop ( int background, pid_t childpid){
-    // Handle ^Z command
-    // Stop the currently running foreground process
-   if (background == 0)
+    if (signo == SIGTSTP)
     {
-        // If the last process is running in the foreground
-        if (childpid > 0)
+        if (isRunningInBackground)
         {
-            stopForegroundProcess(childpid);
-            printf("Foreground process %d stopped\n", childpid);
+            printf("\nCtrl+Z received. Stopping the current process.\n");
+            kill(0, SIGSTOP); // Stop all processes in the foreground group
+            isRunningInBackground = 0;
         }
         else
         {
-            printf("No foreground process to stop\n");
+            printf("\nNo foreground process to stop.\n");
         }
+    }
+}
+
+int main()
+{
+
+    signal(SIGTSTP, handleCtrlZ);
+    char inputBuffer[MAX_INPUT_SIZE];
+    char *args[MAX_ARG_SIZE];
+    int background;
+
+    while (1)
+    {
+        background = 0;
+        char *searchString;
+        int recursive;
+        printf("myshell: ");
+        fflush(stdout);
+        setup(inputBuffer, args, &background);
+
+
+        //search
+        if (strcmp(args[0], "search") == 0)
+        {
+            // Handle search command separately
+            if (args[1] != NULL)
+            {
+                if (strcmp(args[1], "-r") == 0)
+                {
+                    if (args[2] != NULL)
+                    {
+                        searchString = args[2];
+                        recursive = 1;
+                    }
+                    else
+                    {
+                        printf("Usage: search -r filename or search filename\n");
+                    }
+                }
+                else
+                {
+                    searchString = args[1];
+                    recursive = 0;
+                }
+                searchFilesKaragul(searchString, recursive);
+            }
+            else 
+            {
+                printf("Usage: search [-r] <searchedString> \n");
+            }
+        }
+        else //part A
+        {
+            //redirection(args);
+            executeCommand(args, background);
+        }
+    }
+
+    return 0;
+}
+
+void setup(char inputBuffer[], char *args[], int *background)
+{
+    int length, i, start, ct;
+
+    ct = 0;
+    start = -1;
+
+    length = read(STDIN_FILENO, inputBuffer, MAX_INPUT_SIZE);
+
+    if (length == 0)
+        exit(0);
+
+    if ((length < 0) && (errno != EINTR))
+    {
+        perror("error reading the command");
+        exit(-1);
+    }
+
+    for (i = 0; i < length; i++)
+    {
+        switch (inputBuffer[i])
+        {
+        case ' ':
+        case '\t':
+            if (start != -1)
+            {
+                args[ct] = &inputBuffer[start];
+                ct++;
+            }
+            inputBuffer[i] = '\0';
+            start = -1;
+            break;
+
+        case '\n':
+            if (start != -1)
+            {
+                args[ct] = &inputBuffer[start];
+                ct++;
+            }
+            inputBuffer[i] = '\0';
+            args[ct] = NULL;
+            break;
+
+        default:
+            if (start == -1)
+                start = i;
+            if (inputBuffer[i] == '&')
+            {
+                if (i == length - 1 || inputBuffer[i + 1] == ' ' || inputBuffer[i + 1] == '\t' || inputBuffer[i + 1] == '\n')
+                {
+                    *background = 1;
+                    inputBuffer[i] = '\0';
+                }
+                else
+                {
+                    printf("myshell: syntax error near unexpected token `&'\n");
+                    return;
+                }
+            }
+        }
+    }
+
+    args[ct] = NULL;
+    isRunningInBackground = *background; // isRunningInBackground'ı ayarla
+}
+
+void executeCommand(char **args, int background)
+{
+    pid_t pid, wpid;
+    int status;
+
+    pid = fork();
+
+    if (pid == 0)
+    {
+        // Child process
+        char fullPath[256];
+
+
+
+        if (findExecutable(args[0], fullPath))
+        {
+            if (execv(fullPath, args) == -1)
+            {
+                perror("myshell");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else
+        {
+            perror("myshell");
+            exit(EXIT_FAILURE);
+        }
+    }
+    else if (pid < 0)
+    {
+        perror("myshell");
     }
     else
     {
-        printf("Cannot stop background processes using ^Z\n");
+        if (!background)
+        {
+            do
+            {
+                wpid = waitpid(pid, &status, WUNTRACED);
+            } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+            isRunningInBackground = 0; // Reset isRunningInBackground
+        }
+        else
+        {
+            printf("Background process ID: %d\n", pid);
+            return;
+        }
     }
 }
-void stopForegroundProcess(pid_t childpid)
+
+int findExecutable(const char *command, char *fullPath)
 {
-    // Stop the currently running foreground process
-    if (kill(pid, SIGSTOP) == -1)
+    char *pathEnv = getenv("PATH");
+    char *path = strdup(pathEnv);
+
+    char *token = strtok(path, ":");
+
+    while (token != NULL)
     {
-        perror("Failed to stop the process");
-        // Handle error as needed
+        sprintf(fullPath, "%s/%s", token, command);
+        if (access(fullPath, X_OK) == 0)
+        {
+            free(path);
+            return 1; // Bulundu
+        }
+
+        token = strtok(NULL, ":");
     }
-}
-void search (const char *searchString, int recursive){
 
-    searchFiles(".", searchString, recursive);
+    free(path);
+    return 0; // Bulunamadı
 }
 
-void searchFiles(const char *dirname, const char *searchString , int recursive){
+void searchFilesKaragulHelper(const char *filePath, const char *searchString)
+{
+    FILE *file = fopen(filePath, "r");
+    if (file == NULL)
+    {
+        perror("fopen");
+        return;
+    }
+
+    char line[MAX_LINE_SIZE];
+    int lineNumber = 0;
+
+    // Sadece dosya adını al
+    const char *fileName = strrchr(filePath, '/');
+    fileName = (fileName != NULL) ? (fileName + 1) : filePath;
+
+    while (fgets(line, sizeof(line), file) != NULL)
+    {
+        lineNumber++;
+        if (strstr(line, searchString) != NULL)
+        {
+            printf("%d: \t./%s \t-> \t%s", lineNumber, fileName, line);
+        }
+    }
+
+    fclose(file);
+}
+
+void searchFilesKaragul(char *searchString, int recursive)
+{
     DIR *dir;
     struct dirent *entry;
+    char currentDir[MAX_FILE_NAME_SIZE];
 
-    if ((dir = opendir(dirname)) == NULL)
+    if (getcwd(currentDir, sizeof(currentDir)) == NULL)
+    {
+        perror("getcwd");
+        return;
+    }
+
+    if ((dir = opendir(currentDir)) == NULL)
     {
         perror("opendir");
         return;
@@ -246,45 +288,44 @@ void searchFiles(const char *dirname, const char *searchString , int recursive){
 
     while ((entry = readdir(dir)) != NULL)
     {
-        char path[MAX_PATH];
-        snprintf(path, sizeof(path), "%s/%s", dirname, entry->d_name);
-
-        if (entry->d_type == DT_DIR)
+        if (entry->d_type == DT_REG)
         {
-            // Skip "." and ".." directories
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-                continue;
+            // Dosyanın tam yolu
+            char filePath[MAX_FILE_NAME_SIZE];
+            strcpy(filePath, currentDir);
+            strcat(filePath, "/");
+            strcat(filePath, entry->d_name);
 
-            if (recursive)
+            // Dosya uzantısını kontrol et
+            size_t len = strlen(filePath);
+            if ((len > 2) &&
+                ((filePath[len - 2] == '.') &&
+                ((filePath[len - 1] == 'c') || (filePath[len - 1] == 'C') ||
+                (filePath[len - 1] == 'h') || (filePath[len - 1] == 'H'))))
             {
-                // Recursively search subdirectories
-                searchFiles(path, searchString, recursive);
+                searchFilesKaragulHelper(filePath, searchString);
             }
         }
-        else if (entry->d_type == DT_REG)
+        else if (recursive && entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
         {
-            // Regular file, search its content
-            FILE *file = fopen(path, "r");
-            if (file)
+            char subDir[MAX_FILE_NAME_SIZE];
+            strcpy(subDir, currentDir);
+            strcat(subDir, "/");
+            strcat(subDir, entry->d_name);
+
+            // Recursively search subdirectories
+            if (chdir(subDir) == -1)
             {
-                char line[MAX_LINE]; //max path de olabilir emin degilim
-                int lineNumber = 0;
-
-                while (fgets(line, sizeof(line), file) != NULL)
-                {
-                    lineNumber++;
-
-                    if (strstr(line, searchString) != NULL)
-                    {
-                        printf("%s:%d: %s", path, lineNumber, line);
-                    }
-                }
-
-                fclose(file);
+                perror("chdir");
+                return;
             }
-            else
+
+            searchFilesKaragul(searchString, recursive);
+
+            if (chdir("..") == -1)
             {
-                perror("fopen");
+                perror("chdir");
+                return;
             }
         }
     }
@@ -292,102 +333,59 @@ void searchFiles(const char *dirname, const char *searchString , int recursive){
     closedir(dir);
 }
 
-void bookmark(char *args[], int background){
-    // Handle bookmark command
-    if (args[1] != NULL)
-    {
-        if (strcmp(args[1], "-l") == 0)
-        {
-            // List bookmarks
-            listbookmarks();
+
+void redirection(char **args){
+    if (args[MAX_ARG_SIZE - 2] == NULL){
+        //no redirection
+    }else if (strstr(args[MAX_ARG_SIZE - 2], ">") != NULL){
+        //redirect output to file
+        char *outputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY);
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
         }
-        else if(strcmp(args[1], "-i") == 0 && args[2] != NULL){
-            //Execute bookmark by index
-            int index = atoi(args[2]);
-            executeBookmark(index)
+        dup2(redirection_fd, STDOUT_FILENO);
+        close(redirection_fd);
 
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove ">" from arguments
+    }else if (strstr(args[MAX_ARG_SIZE - 2], ">>") != NULL){
+        //redirect output to file - overwrite
+        char *outputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(outputFile, O_CREAT | O_APPEND | O_WRONLY);
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
         }
-        else if (strcmp(args[1], "-d") == 0 && args[2] != NULL)
-        {
-            // Delete bookmark
-            int index = atoi(args[2]);
-            deleteBookmark(index);
+        dup2(redirection_fd, STDOUT_FILENO);
+        close(redirection_fd);
+
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove ">>" from arguments
+    }else if(strstr(args[MAX_ARG_SIZE - 2], "2>") != NULL){
+        //redirect error to file
+        char *outputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY , 0666);
+
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
         }
-        else
-        {
-            // Add a new bookmark
-                char bookmarkCommand[MAX_COMMAND_LENGTH];
-                strcpy(bookmarkCommand, args[1]);
+        dup2(redirection_fd, STDOUT_FILENO);
+        close(redirection_fd);
 
-                for (int i = 2; args[i] != NULL; i++)
-                {
-                    strcat(bookmarkCommand, " ");
-                    strcat(bookmarkCommand, args[i]);
-                }
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove "2>" from arguments
 
-                addBookmark(bookmarkCommand);
+    }else if(strstr(args[MAX_ARG_SIZE - 2], "<") != NULL){
+        //redirect input to file
+        char *inputFile = args[MAX_ARG_SIZE - 1];
+        int redirection_fd = open(inputFile, O_RDONLY);
+        if (redirection_fd== -1 ){
+            perror("open");
+            exit(EXIT_FAILURE);
         }
-    }
-    else
-    {
-        printf("Missing bookmark name\n");
-    }
-}
+        dup2(redirection_fd, STDIN_FILENO);
+        close(redirection_fd);
 
-void listbookmarks(){
-    // List bookmarks
-
-    //bir hata var ama ne oldugunu bulamadim
-    printf("Bookmarks:\n");
-    for (int i = 0; i < bookmarkCount; i++)
-    {
-        printf("%d: %s\n", i + 1, bookmarks[i]);
-    }
-}
-void addBookmark(const char *command,char *args[], int background){
-    // Add bookmark
-    if (bookmarkCount < MAX_BOOKMARKS)
-    {
-        strcpy(bookmarks[bookmarkCount], args[1]);
-        bookmarkCount++;
-        printf("Bookmark added: %s\n", args[1]);
-        printf("Bookmark added command: %s\n", command);
-    }
-    else
-    {
-        printf("Maximum number of bookmarks reached (%d)\n", MAX_BOOKMARKS);
-    }
-}
-
-void deleteBookmark(int index){
-    // Delete bookmark
-    if (index > 0 && index <= bookmarkCount)
-    {
-        printf("Bookmark deleted %d: %s\n",index ,bookmarks[index - 1]);
-        for (int i = index - 1; i < bookmarkCount - 1; i++)
-        {
-            strcpy(bookmarks[i], bookmarks[i + 1]);
-        }
-        bookmarkCount--;
-    }
-    else
-    {
-        printf("Invalid bookmark index\n");
-    }
-}
-
-void executeBookmark(int index){
-    // Execute bookmark by index
-    if (index > 0 && index <= bookmarkCount)
-    {
-        printf("Executing bookmark %d: %s\n", index, bookmarks[index - 1]);
-        char *args[MAX_LINE/2 + 1];
-        int background = 0;
-        setup(bookmarks[index - 1], args, &background);
-        internalCommand(args, background, childpid);
-    }
-    else
-    {
-        printf("Invalid bookmark index\n");
+        args[MAX_ARG_SIZE - 2] = NULL; // Remove "<" from arguments
     }
 }

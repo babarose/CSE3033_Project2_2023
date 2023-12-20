@@ -9,12 +9,14 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <fcntl.h>
-
+#include <stdbool.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARG_SIZE 64
 #define MAX_FILE_NAME_SIZE 1024
 #define MAX_LINE_SIZE 512
+#define MAX_BOOKMARKS 10
+
 
 void setup(char inputBuffer[], char *args[], int *background);
 void executeCommand(char **args, int background);
@@ -23,36 +25,35 @@ void searchFiles(const char *searchString, int recursive);
 void searchFilesKaragul(char *searchString, int recursive);
 void searchFilesKaragulHelper(const char *filePath, const char *searchString);
 void redirection(char **args);
+void addBookmark(const char *command);
+void listBookmarks();
+void executeBookmark(int index);
+void deleteBookmark(int index);
+void exitShell();
 
 volatile sig_atomic_t isRunningInBackground = 0;
+char *bookmarks[MAX_BOOKMARKS];
+int bookmarkCount = 0;
 
-void handleCtrlZ(int signo)
-{
-    if (signo == SIGTSTP)
-    {
-        if (isRunningInBackground)
-        {
-            printf("\nCtrl+Z received. Stopping the current process.\n");
-            kill(0, SIGSTOP); // Stop all processes in the foreground group
-            isRunningInBackground = 0;
-        }
-        else
-        {
-            printf("\nNo foreground process to stop.\n");
-        }
+
+// Signal handler function
+void handleCtrlZ(int signo) {
+    if (signo == SIGTSTP) {
+       
+        printf("\nCtrl+Z received. Stopping the current process.\n");
+
+    }else {
+        printf("No foreground process to stop.\n");
     }
 }
 
-int main()
-{
+int main() {
 
-    signal(SIGTSTP, handleCtrlZ);
     char inputBuffer[MAX_INPUT_SIZE];
     char *args[MAX_ARG_SIZE];
     int background;
 
-    while (1)
-    {
+    while (1) {
         background = 0;
         char *searchString;
         int recursive;
@@ -60,6 +61,20 @@ int main()
         fflush(stdout);
         setup(inputBuffer, args, &background);
 
+        isRunningInBackground = background; // isRunningInBackground'ı ayarla
+
+        if (!isRunningInBackground)
+        {
+            signal(SIGTSTP, handleCtrlZ); // Ctrl+Z'yi yakala
+        }else if(isRunningInBackground){
+            signal(SIGTSTP, SIG_IGN); // Ctrl+Z'yi yoksay
+        }
+
+        if (strcmp(args[0], "exit") == 0) {
+            exitShell();
+        }
+        
+            
 
         //search
         if (strcmp(args[0], "search") == 0)
@@ -91,9 +106,43 @@ int main()
                 printf("Usage: search [-r] <searchedString> \n");
             }
         }
+        if (strcmp(args[0], "bookmark") == 0) {
+            if (args[1] != NULL) {
+                if (strcmp(args[1], "-l") == 0) {
+                    // List bookmarks
+                    listBookmarks();
+                } else if (strcmp(args[1], "-i") == 0) {
+                    // Execute bookmark by index
+                    if (args[2] != NULL) {
+                        int index = atoi(args[2]);
+                        executeBookmark(index);
+                    } else {
+                        fprintf(stderr, "Usage: bookmark -i index\n");
+                    }
+                } else if (strcmp(args[1], "-d") == 0) {
+                    // Delete bookmark by index
+                    if (args[2] != NULL) {
+                        int index = atoi(args[2]);
+                        deleteBookmark(index);
+                    } else {
+                        fprintf(stderr, "Usage: bookmark -d index\n");
+                    }
+                } else {
+                    // Add new bookmark
+                    int bookmarkIndex = 1;
+                    char bookmarkCommand[MAX_INPUT_SIZE];
+                    strcpy(bookmarkCommand, args[bookmarkIndex]);
+                    for (int i = bookmarkIndex + 1; args[i] != NULL; i++) {
+                        strcat(bookmarkCommand, " ");
+                        strcat(bookmarkCommand, args[i]);
+                    }
+                    addBookmark(bookmarkCommand);
+                }
+            }
+        }    
         else //part A
         {
-            //redirection(args);
+            redirection(args);
             executeCommand(args, background);
         }
     }
@@ -101,8 +150,7 @@ int main()
     return 0;
 }
 
-void setup(char inputBuffer[], char *args[], int *background)
-{
+void setup(char inputBuffer[], char *args[], int *background) {
     int length, i, start, ct;
 
     ct = 0;
@@ -133,6 +181,13 @@ void setup(char inputBuffer[], char *args[], int *background)
             inputBuffer[i] = '\0';
             start = -1;
             break;
+        case '\"': // Çift tırnak karakterini kontrol et
+                if (start == -1) {
+                    start = i + 1;
+                } else {
+                    inputBuffer[i] = '\0';
+                }
+                break;
 
         case '\n':
             if (start != -1)
@@ -164,7 +219,6 @@ void setup(char inputBuffer[], char *args[], int *background)
     }
 
     args[ct] = NULL;
-    isRunningInBackground = *background; // isRunningInBackground'ı ayarla
 }
 
 void executeCommand(char **args, int background)
@@ -207,7 +261,7 @@ void executeCommand(char **args, int background)
             {
                 wpid = waitpid(pid, &status, WUNTRACED);
             } while (!WIFEXITED(status) && !WIFSIGNALED(status));
-            isRunningInBackground = 0; // Reset isRunningInBackground
+            //isRunningInBackground = 0; // Reset isRunningInBackground
         }
         else
         {
@@ -334,58 +388,112 @@ void searchFilesKaragul(char *searchString, int recursive)
 }
 
 
-void redirection(char **args){
-    if (args[MAX_ARG_SIZE - 2] == NULL){
-        //no redirection
-    }else if (strstr(args[MAX_ARG_SIZE - 2], ">") != NULL){
-        //redirect output to file
-        char *outputFile = args[MAX_ARG_SIZE - 1];
-        int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY);
-        if (redirection_fd== -1 ){
-            perror("open");
-            exit(EXIT_FAILURE);
+void redirection(char **args) {
+    for (int i = 0; args[i] != NULL; ++i) {
+        printf("test 1"  );
+        if (strcmp(args[i], ">") == 0) {
+            printf("test"  );
+            char *outputFile = args[i + 1];
+            int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+            if (redirection_fd == -1) {
+                perror("open");
+                exit(EXIT_FAILURE);
+            }
+            dup2(redirection_fd, STDOUT_FILENO);
+            close(redirection_fd);
+
+            args[i] = NULL; // Remove ">" from arguments
+            args[i + 1] = NULL; // Remove the output file name
+        } else if (strcmp(args[i], ">>") == 0) {
+            char *outputFile = args[i + 1];
+            int redirection_fd = open(outputFile, O_CREAT | O_APPEND | O_WRONLY, 0666);
+            if (redirection_fd == -1) {
+                perror("open");
+                exit(EXIT_FAILURE);
+            }
+            dup2(redirection_fd, STDOUT_FILENO);
+            close(redirection_fd);
+
+            args[i] = NULL; // Remove ">>" from arguments
+            args[i + 1] = NULL; // Remove the output file name
+        } else if (strcmp(args[i], "2>") == 0) {
+            char *outputFile = args[i + 1];
+            int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+            if (redirection_fd == -1) {
+                perror("open");
+                exit(EXIT_FAILURE);
+            }
+            dup2(redirection_fd, STDERR_FILENO);
+            close(redirection_fd);
+
+            args[i] = NULL; // Remove "2>" from arguments
+            args[i + 1] = NULL; // Remove the output file name
+        } else if (strcmp(args[i], "<") == 0) {
+            char *inputFile = args[i + 1];
+            int redirection_fd = open(inputFile, O_RDONLY);
+            if (redirection_fd == -1) {
+                perror("open");
+                exit(EXIT_FAILURE);
+            }
+            dup2(redirection_fd, STDIN_FILENO);
+            close(redirection_fd);
+
+            args[i] = NULL; // Remove "<" from arguments
+            args[i + 1] = NULL; // Remove the input file name
         }
-        dup2(redirection_fd, STDOUT_FILENO);
-        close(redirection_fd);
+    }
+}
+void addBookmark(const char *command) {
+    if (bookmarkCount < MAX_BOOKMARKS) {
+        bookmarks[bookmarkCount++] = strdup(command);
+    } else {
+        fprintf(stderr, "Bookmark list is full. Cannot add more bookmarks.\n");
+    }
+}
+void listBookmarks() {
+    int i;
+    for (i = 0; i < bookmarkCount; ++i) {
+        printf("%d \"%s\"\n", i, bookmarks[i]);
+    }
+}
+void executeBookmark(int index) {
+    if (index >= 0 && index < bookmarkCount) {
+        char inputBuffer[MAX_INPUT_SIZE];
+        char *args[MAX_ARG_SIZE];
+        int background = 0;
 
-        args[MAX_ARG_SIZE - 2] = NULL; // Remove ">" from arguments
-    }else if (strstr(args[MAX_ARG_SIZE - 2], ">>") != NULL){
-        //redirect output to file - overwrite
-        char *outputFile = args[MAX_ARG_SIZE - 1];
-        int redirection_fd = open(outputFile, O_CREAT | O_APPEND | O_WRONLY);
-        if (redirection_fd== -1 ){
-            perror("open");
-            exit(EXIT_FAILURE);
+        // Copy the bookmarked command to inputBuffer
+        strcpy(inputBuffer, bookmarks[index]);
+
+        // Setup and execute the bookmarked command
+        setup(inputBuffer, args, &background);
+        executeCommand(args, background);
+    } else {
+        fprintf(stderr, "Invalid bookmark index.\n");
+    }
+}
+void deleteBookmark(int index) {
+    if (index >= 0 && index < bookmarkCount) {
+        free(bookmarks[index]);
+
+        // Shift the remaining bookmarks
+        for (int i = index; i < bookmarkCount - 1; ++i) {
+            bookmarks[i] = bookmarks[i + 1];
         }
-        dup2(redirection_fd, STDOUT_FILENO);
-        close(redirection_fd);
 
-        args[MAX_ARG_SIZE - 2] = NULL; // Remove ">>" from arguments
-    }else if(strstr(args[MAX_ARG_SIZE - 2], "2>") != NULL){
-        //redirect error to file
-        char *outputFile = args[MAX_ARG_SIZE - 1];
-        int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY , 0666);
-
-        if (redirection_fd== -1 ){
-            perror("open");
-            exit(EXIT_FAILURE);
-        }
-        dup2(redirection_fd, STDOUT_FILENO);
-        close(redirection_fd);
-
-        args[MAX_ARG_SIZE - 2] = NULL; // Remove "2>" from arguments
-
-    }else if(strstr(args[MAX_ARG_SIZE - 2], "<") != NULL){
-        //redirect input to file
-        char *inputFile = args[MAX_ARG_SIZE - 1];
-        int redirection_fd = open(inputFile, O_RDONLY);
-        if (redirection_fd== -1 ){
-            perror("open");
-            exit(EXIT_FAILURE);
-        }
-        dup2(redirection_fd, STDIN_FILENO);
-        close(redirection_fd);
-
-        args[MAX_ARG_SIZE - 2] = NULL; // Remove "<" from arguments
+        --bookmarkCount;
+    } else {
+        fprintf(stderr, "Invalid bookmark index.\n");
+    }
+}
+void exitShell() {
+    printf("\n%d\n",isRunningInBackground);
+    if (isRunningInBackground) {
+        printf("There are background processes still running. Please wait for them to finish or terminate them.\n");
+        return;
+        
+    }else {
+    printf("Exiting the shell. Goodbye!\n");
+    exit(0);
     }
 }
