@@ -194,6 +194,7 @@ void setup(char inputBuffer[], char *args[], int *background) {
             {
                 args[ct] = &inputBuffer[start];
                 ct++;
+                
             }
             inputBuffer[i] = '\0';
             args[ct] = NULL;
