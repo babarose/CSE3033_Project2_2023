@@ -43,8 +43,9 @@ int unRedirection = 0;
 int original_stdin;
 int original_stdout;
 int original_stderr;
-
-
+int background;
+char inputBuffer[MAX_INPUT_SIZE];
+char *args[MAX_ARG_SIZE];
 
 // Signal handler function
 void handleCtrlZ(int signo) {
@@ -59,9 +60,8 @@ void handleCtrlZ(int signo) {
 
 int main() {
 
-    char inputBuffer[MAX_INPUT_SIZE];
-    char *args[MAX_ARG_SIZE];
-    int background;
+
+    
     original_stdin = dup(STDIN_FILENO);  // Save the original file descriptor for stdin
     original_stdout = dup(STDOUT_FILENO);  // Save the original file descriptor for stdout
     original_stderr = dup(STDERR_FILENO);  // Save the original file descriptor for stderr
@@ -73,6 +73,7 @@ int main() {
         int recursive;
         printf("myshell: ");
         fflush(stdout);
+
         setup(inputBuffer, args, &background);
 
         isRunningInBackground = background; // isRunningInBackground'ı ayarla
@@ -170,7 +171,7 @@ void setup(char inputBuffer[], char *args[], int *background) {
 
     ct = 0;
     start = -1;
-
+    printf("---buradayım---------\n");
     length = read(STDIN_FILENO, inputBuffer, MAX_INPUT_SIZE);
 
     if (length == 0)
@@ -181,7 +182,10 @@ void setup(char inputBuffer[], char *args[], int *background) {
         perror("error reading the command");
         exit(-1);
     }
-
+    printf("------------\n");
+    printf("inputBuffer: %s\n", inputBuffer);
+    printf("args: %s\n", args[0]);
+    printf("length: %d\n", length);
     for (i = 0; i < length; i++)
     {
         switch (inputBuffer[i])
@@ -281,7 +285,7 @@ void executeCommand(char **args, int background)
             {
                 wpid = waitpid(pid, &status, WUNTRACED);
             } while (!WIFEXITED(status) && !WIFSIGNALED(status));
-            //isRunningInBackground = 0; // Reset isRunningInBackground
+
         }
         else
         {
@@ -493,15 +497,19 @@ void listBookmarks() {
 }
 void executeBookmark(int index) {
     if (index >= 0 && index < bookmarkCount) {
-        char inputBuffer[MAX_INPUT_SIZE];
-        char *args[MAX_ARG_SIZE];
-        int background = 0;
+
+        
 
         // Copy the bookmarked command to inputBuffer
         strcpy(inputBuffer, bookmarks[index]);
-
+        printf("Executing bookmark %d: %s\n", index, inputBuffer);
+        printf("args: %s\n", args[0]);
+        printf("background: %d\n", background);
         // Setup and execute the bookmarked command
         setup(inputBuffer, args, &background);
+
+        printf("args: %s\n", args[0]);
+        printf("background: %d\n", background);
         executeCommand(args, background);
     } else {
         fprintf(stderr, "Invalid bookmark index.\n");
