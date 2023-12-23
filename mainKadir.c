@@ -244,26 +244,26 @@ void executeCommand(char **args, int background)
     int status;
 
     pid = fork();
-    printf("execude sa\n");
-    printf("args[0]: %s\n", args[0]);
+    //printf("execude sa\n");
+    //printf("args[0]: %s\n", args[0]);
     if (pid == 0)
     {   
-        printf("child burada\n");
+        //printf("child burada\n");
         // Child process
         char fullPath[256];
-        printf("deneme\n");
+        //printf("deneme\n");
         int result =findExecutable(args[0], fullPath);
-        printf("result: %d\n", result);
+        //printf("result: %d\n", result);
         if (result)
         {
-            printf("hata 0 \n");
-            printf("fullPath: %s\n", fullPath);
-            for (int i = 0; args[i] != NULL; i++)
+            //printf("hata 0 \n");
+            //printf("fullPath: %s\n", fullPath);
+            /*for (int i = 0; args[i] != NULL; i++)
             {
                 printf("args[%d]: %s\n", i, args[i]);
-            }
+            }*/
             int execvResult = execv(fullPath, args);
-            printf("execvResult: %d\n", execvResult);
+            //printf("execvResult: %d\n", execvResult);
             if (execvResult == -1)
             {
                 perror("myshell");
@@ -277,16 +277,16 @@ void executeCommand(char **args, int background)
                 
                 exit(EXIT_FAILURE);
             }*/
-            printf("hata 3 \n");
+           // printf("hata 3 \n");
         }
         else
         {
-            printf("hata 2 \n");
+          //  printf("hata 2 \n");
             perror("myshell");
             exit(EXIT_FAILURE);
         }
-        printf("Result: %d\n", result);
-        printf("child burada 2\n");
+        //printf("Result: %d\n", result);
+        //printf("child burada 2\n");
     }
     else if (pid < 0)
     {
@@ -295,7 +295,7 @@ void executeCommand(char **args, int background)
     }
     else
     {
-        printf("parent burada\n");
+        //printf("parent burada\n");
         if (!background)
         {
             do
@@ -309,7 +309,7 @@ void executeCommand(char **args, int background)
             printf("Background process ID: %d\n", pid);
             return;
         }
-        printf("parent burada 2\n");
+        //printf("parent burada 2\n");
     }
 }
 
@@ -515,21 +515,27 @@ void listBookmarks() {
 }
 void executeBookmark(int index) {
     if (index >= 0 && index < bookmarkCount) {
-
-        char bookmarkArgs[MAX_INPUT_SIZE];
-
         // Copy the bookmarked command to inputBuffer
         strcpy(inputBuffer, bookmarks[index]);
-        
-        for (int i=0; i < sizeof(inputBuffer); i++) {
-            
-            bookmarkArgs[i] = strtok(inputBuffer, " ");
-            printf("bookmarkArgs[%d]: %s\n", i, bookmarkArgs[i]);
-        }
-            
-        // Setup and execute the bookmarked command
 
-        executeCommand(bookmarkArgs, background);
+        // Parçalama için geçici bir değişken
+        char *token;
+
+        // Parçala ve args array'ine ekle
+        int i = 0;
+        token = strtok(inputBuffer, " "); // Boşluklara göre parçala
+        while (token != NULL && i < MAX_ARG_SIZE - 1) {
+            args[i++] = token;
+            token = strtok(NULL, " ");
+        }
+
+        // Geri kalan args elemanlarını NULL olarak ayarla
+        for (; i < MAX_ARG_SIZE; i++) {
+            args[i] = NULL;
+        }
+
+        // Execute the command
+        executeCommand(args, background);
     } else {
         fprintf(stderr, "Invalid bookmark index.\n");
     }
