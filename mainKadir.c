@@ -38,12 +38,12 @@ void exitShell();
 volatile sig_atomic_t isRunningInBackground = 0;
 char *bookmarks[MAX_BOOKMARKS];
 int bookmarkCount = 0;
-int redirection_fd = -1; // Dosya tanımlayıcısını global olarak tanımla
+int redirection_fd = -1; // Dosya tanımlayıcısını global olarak 
 int unRedirection = 0;
 int original_stdin;
 int original_stdout;
 int original_stderr;
-int background;
+int background = 0;
 char inputBuffer[MAX_INPUT_SIZE];
 char *args[MAX_ARG_SIZE];
 
@@ -62,39 +62,41 @@ int main() {
 
 
     
-    original_stdin = dup(STDIN_FILENO);  // Save the original file descriptor for stdin
-    original_stdout = dup(STDOUT_FILENO);  // Save the original file descriptor for stdout
-    original_stderr = dup(STDERR_FILENO);  // Save the original file descriptor for stderr
+    original_stdin = dup(STDIN_FILENO); 
+    original_stdout = dup(STDOUT_FILENO);  
+    original_stderr = dup(STDERR_FILENO); 
 
 
     while (1) {
-        background = 0;
+       background = 0;
         char *searchString;
         int recursive;
         printf("myshell: ");
         fflush(stdout);
-
+        printf("1 background: %d\n", background);
         setup(inputBuffer, args, &background);
-
-        isRunningInBackground = background; // isRunningInBackground'ı ayarla
-
+        printf("2 background: %d\n", background);
+        isRunningInBackground = background; // isRunningInBackground'ı ayarladım
+        
         if (!isRunningInBackground)
         {
-            signal(SIGTSTP, handleCtrlZ); // Ctrl+Z'yi yakala
+            signal(SIGTSTP, handleCtrlZ); 
         }else if(isRunningInBackground){
-            signal(SIGTSTP, SIG_IGN); // Ctrl+Z'yi yoksay
+            signal(SIGTSTP, SIG_IGN); 
         }
 
         if (strcmp(args[0], "exit") == 0) {
             exitShell();
         }
+        printf("3 background: %d\n", background);
+   
         
             
 
         //search
         if (strcmp(args[0], "search") == 0)
         {
-            // Handle search command separately
+            
             if (args[1] != NULL)
             {
                 if (strcmp(args[1], "-r") == 0)
@@ -161,7 +163,10 @@ int main() {
             executeCommand(args, background);
             unredirection(); // Unredirection işlemi
         }
+
     }
+         
+    
 
     return 0;
 }
@@ -197,7 +202,7 @@ void setup(char inputBuffer[], char *args[], int *background) {
             inputBuffer[i] = '\0';
             start = -1;
             break;
-        case '\"': // Çift tırnak karakterini kontrol et
+        case '\"': 
                 if (start == -1) {
                     start = i + 1;
                 } else {
@@ -221,9 +226,12 @@ void setup(char inputBuffer[], char *args[], int *background) {
                 start = i;
             if (inputBuffer[i] == '&')
             {
+                
+                *background = 1;
+                
                 if (i == length - 1 || inputBuffer[i + 1] == ' ' || inputBuffer[i + 1] == '\t' || inputBuffer[i + 1] == '\n')
                 {
-                    *background = 1;
+                    
                     inputBuffer[i] = '\0';
                 }
                 else
@@ -290,12 +298,11 @@ void executeCommand(char **args, int background)
     }
     else if (pid < 0)
     {
-        // Error forking
         perror("myshell");
     }
     else
     {
-        //printf("parent burada\n");
+       
         if (!background)
         {
             do
@@ -309,7 +316,7 @@ void executeCommand(char **args, int background)
             printf("Background process ID: %d\n", pid);
             return;
         }
-        //printf("parent burada 2\n");
+        
     }
 }
 
@@ -328,20 +335,20 @@ int findExecutable(const char *command, char *fullPath)
 
     while (token != NULL)
     {
-        // snprintf kullanımı burada
+        
         snprintf(fullPath, 255, "%s/%s", token, command);
 
         if (access(fullPath, X_OK) == 0)
         {
             free(path);
-            return 1; // Bulundu
+            return 1; 
         }
 
         token = strtok(NULL, ":");
     }
 
     free(path);
-    return 0; // Bulunamadı
+    return 0; 
 }
 
 
@@ -399,11 +406,9 @@ void searchFilesKaragul(char *searchString, int recursive)
     {
         if (entry->d_type == DT_REG)
         {
-            // Dosyanın tam yolu
             char filePath[MAX_FILE_NAME_SIZE];
             concatenatePaths(startDir, entry->d_name, filePath);
 
-            // Dosya uzantısını kontrol et
             size_t len = strlen(filePath);
             if ((len > 2) &&
                 ((filePath[len - 2] == '.') &&
@@ -418,7 +423,6 @@ void searchFilesKaragul(char *searchString, int recursive)
             char subDir[MAX_FILE_NAME_SIZE];
             concatenatePaths(startDir, entry->d_name, subDir);
 
-            // Recursively search subdirectories
             if (chdir(subDir) == -1)
             {
                 perror("chdir");
@@ -447,12 +451,10 @@ void searchFilesKaragul(char *searchString, int recursive)
 void redirection(char **args) {
     for (int i = 0; args[i] != NULL; i++) {
         if (strcmp(args[i], ">") == 0 || strcmp(args[i], ">>") == 0 || strcmp(args[i], "2>") == 0 || strcmp(args[i], "<") == 0) {
-            // Check if there is a filename after the operator
             if (args[i + 1] != NULL) {
                 char *fileName = args[i + 1];
 
                 if (redirection_fd != -1) {
-                    // Eğer önceki bir dosya tanımlayıcısı açıldıysa, kapatın
                     close(redirection_fd);
                 }
 
@@ -476,7 +478,6 @@ void redirection(char **args) {
                     exit(EXIT_FAILURE);
                 }
 
-                // Remove the operator and filename from arguments
                 args[i] = NULL;
                 args[i + 1] = NULL;
                 unRedirection = 1;
@@ -515,26 +516,21 @@ void listBookmarks() {
 }
 void executeBookmark(int index) {
     if (index >= 0 && index < bookmarkCount) {
-        // Copy the bookmarked command to inputBuffer
         strcpy(inputBuffer, bookmarks[index]);
 
-        // Parçalama için geçici bir değişken
         char *token;
 
-        // Parçala ve args array'ine ekle
         int i = 0;
-        token = strtok(inputBuffer, " "); // Boşluklara göre parçala
+        token = strtok(inputBuffer, " "); 
         while (token != NULL && i < MAX_ARG_SIZE - 1) {
             args[i++] = token;
             token = strtok(NULL, " ");
         }
 
-        // Geri kalan args elemanlarını NULL olarak ayarla
         for (; i < MAX_ARG_SIZE; i++) {
             args[i] = NULL;
         }
 
-        // Execute the command
         executeCommand(args, background);
     } else {
         fprintf(stderr, "Invalid bookmark index.\n");
@@ -544,7 +540,6 @@ void deleteBookmark(int index) {
     if (index >= 0 && index < bookmarkCount) {
         free(bookmarks[index]);
 
-        // Shift the remaining bookmarks
         for (int i = index; i < bookmarkCount - 1; ++i) {
             bookmarks[i] = bookmarks[i + 1];
         }
@@ -555,13 +550,13 @@ void deleteBookmark(int index) {
     }
 }
 void exitShell() {
-    printf("\n%d\n",isRunningInBackground);
-    if (isRunningInBackground) {
-        printf("There are background processes still running. Please wait for them to finish or terminate them.\n");
-        return;
-        
-    }else {
-    printf("Exiting the shell. Goodbye!\n");
-    exit(0);
+    int status;
+    pid_t wpid;
+
+    while ((wpid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("Background process %d terminated.\n", wpid);
     }
+
+    printf("Exiting the shell.\n");
+    exit(EXIT_SUCCESS);
 }
