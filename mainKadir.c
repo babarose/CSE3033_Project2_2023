@@ -249,8 +249,8 @@ void executeCommand(char **args, int background)
         // Child process
         char fullPath[256];
 
-
-
+    int result =findExecutable(args[0], fullPath);
+   
         if (findExecutable(args[0], fullPath))
         {
             if (execv(fullPath, args) == -1)
@@ -265,6 +265,7 @@ void executeCommand(char **args, int background)
             perror("myshell");
             exit(EXIT_FAILURE);
         }
+        printf("Result: %d\n", result);
     }
     else if (pid < 0)
     {
@@ -291,13 +292,21 @@ void executeCommand(char **args, int background)
 int findExecutable(const char *command, char *fullPath)
 {
     char *pathEnv = getenv("PATH");
+    if (pathEnv == NULL)
+    {
+        perror("getenv");
+        return 0;
+    }
+
     char *path = strdup(pathEnv);
 
     char *token = strtok(path, ":");
 
     while (token != NULL)
     {
-        sprintf(fullPath, "%s/%s", token, command);
+        // snprintf kullanımı burada
+        snprintf(fullPath, 255, "%s/%s", token, command);
+
         if (access(fullPath, X_OK) == 0)
         {
             free(path);
@@ -310,6 +319,7 @@ int findExecutable(const char *command, char *fullPath)
     free(path);
     return 0; // Bulunamadı
 }
+
 
 void searchFilesKaragulHelper(const char *filePath, const char *searchString)
 {
