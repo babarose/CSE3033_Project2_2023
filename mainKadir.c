@@ -246,6 +246,7 @@ void executeCommand(char **args, int background)
         }
         else
         {
+            //hata var burada
             perror("myshell");
             exit(EXIT_FAILURE);
         }
