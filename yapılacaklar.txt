@@ -1,4 +1,4 @@
 - exit de sıkıntı var
 - bookmark -i de sorun var
-- no such file or directory hatası geliyor 
 - search içerisinde ilk ve son karakterin  tırnak olup olmadığını kontrol etmem gerekiyor
+(çok önemli değil tırnakları kullanıp kullanmamak)

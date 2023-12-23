@@ -120,7 +120,7 @@ int main() {
                 printf("Usage: search [-r] <searchedString> \n");
             }
         }
-        if (strcmp(args[0], "bookmark") == 0) {
+        else if (strcmp(args[0], "bookmark") == 0) {
             if (args[1] != NULL) {
                 if (strcmp(args[1], "-l") == 0) {
                     // List bookmarks
@@ -249,8 +249,8 @@ void executeCommand(char **args, int background)
         // Child process
         char fullPath[256];
 
-    int result =findExecutable(args[0], fullPath);
-   
+        int result =findExecutable(args[0], fullPath);
+    
         if (findExecutable(args[0], fullPath))
         {
             if (execv(fullPath, args) == -1)
@@ -262,7 +262,9 @@ void executeCommand(char **args, int background)
         else
         {
             //hata var burada
+            printf("hata burada başlıyor\n");
             perror("myshell");
+            printf("hata burada bitiyor\n");
             exit(EXIT_FAILURE);
         }
         printf("Result: %d\n", result);
