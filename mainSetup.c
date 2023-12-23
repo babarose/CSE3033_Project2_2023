@@ -74,9 +74,9 @@ int main()
         int recursive;
         printf("myshell: ");
         fflush(stdout);
-        printf("1 background: %d\n", background);
+        //printf("1 background: %d\n", background);
         setup(inputBuffer, args, &background);
-        printf("2 background: %d\n", background);
+        //printf("2 background: %d\n", background);
         isRunningInBackground = background; // isRunningInBackground'ı ayarladım
 
         if (!isRunningInBackground)
@@ -92,7 +92,8 @@ int main()
         {
             exitShell();
         }
-        printf("3 background: %d\n", background);
+        
+        //printf("3 background: %d\n", background);
 
         // search
         if (strcmp(args[0], "search") == 0)
