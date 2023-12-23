@@ -171,9 +171,9 @@ void setup(char inputBuffer[], char *args[], int *background) {
 
     ct = 0;
     start = -1;
-    printf("---buradayım---------\n");
+    
     length = read(STDIN_FILENO, inputBuffer, MAX_INPUT_SIZE);
-
+    
     if (length == 0)
         exit(0);
 
@@ -182,10 +182,7 @@ void setup(char inputBuffer[], char *args[], int *background) {
         perror("error reading the command");
         exit(-1);
     }
-    printf("------------\n");
-    printf("inputBuffer: %s\n", inputBuffer);
-    printf("args: %s\n", args[0]);
-    printf("length: %d\n", length);
+    
     for (i = 0; i < length; i++)
     {
         switch (inputBuffer[i])
@@ -247,38 +244,58 @@ void executeCommand(char **args, int background)
     int status;
 
     pid = fork();
-
+    printf("execude sa\n");
+    printf("args[0]: %s\n", args[0]);
     if (pid == 0)
-    {
+    {   
+        printf("child burada\n");
         // Child process
         char fullPath[256];
-
+        printf("deneme\n");
         int result =findExecutable(args[0], fullPath);
-    
-        if (findExecutable(args[0], fullPath))
+        printf("result: %d\n", result);
+        if (result)
         {
-            if (execv(fullPath, args) == -1)
+            printf("hata 0 \n");
+            printf("fullPath: %s\n", fullPath);
+            for (int i = 0; args[i] != NULL; i++)
+            {
+                printf("args[%d]: %s\n", i, args[i]);
+            }
+            int execvResult = execv(fullPath, args);
+            printf("execvResult: %d\n", execvResult);
+            if (execvResult == -1)
             {
                 perror("myshell");
                 exit(EXIT_FAILURE);
             }
+            
+            /*if (execv(fullPath, args) == -1)
+            {
+                printf("hata 1 \n");
+                perror("myshell");
+                
+                exit(EXIT_FAILURE);
+            }*/
+            printf("hata 3 \n");
         }
         else
         {
-            //hata var burada
-            printf("hata burada başlıyor\n");
+            printf("hata 2 \n");
             perror("myshell");
-            printf("hata burada bitiyor\n");
             exit(EXIT_FAILURE);
         }
         printf("Result: %d\n", result);
+        printf("child burada 2\n");
     }
     else if (pid < 0)
     {
+        // Error forking
         perror("myshell");
     }
     else
     {
+        printf("parent burada\n");
         if (!background)
         {
             do
@@ -292,6 +309,7 @@ void executeCommand(char **args, int background)
             printf("Background process ID: %d\n", pid);
             return;
         }
+        printf("parent burada 2\n");
     }
 }
 
@@ -498,19 +516,20 @@ void listBookmarks() {
 void executeBookmark(int index) {
     if (index >= 0 && index < bookmarkCount) {
 
-        
+        char bookmarkArgs[MAX_INPUT_SIZE];
 
         // Copy the bookmarked command to inputBuffer
         strcpy(inputBuffer, bookmarks[index]);
-        printf("Executing bookmark %d: %s\n", index, inputBuffer);
-        printf("args: %s\n", args[0]);
-        printf("background: %d\n", background);
+        
+        for (int i=0; i < sizeof(inputBuffer); i++) {
+            
+            bookmarkArgs[i] = strtok(inputBuffer, " ");
+            printf("bookmarkArgs[%d]: %s\n", i, bookmarkArgs[i]);
+        }
+            
         // Setup and execute the bookmarked command
-        setup(inputBuffer, args, &background);
 
-        printf("args: %s\n", args[0]);
-        printf("background: %d\n", background);
-        executeCommand(args, background);
+        executeCommand(bookmarkArgs, background);
     } else {
         fprintf(stderr, "Invalid bookmark index.\n");
     }
