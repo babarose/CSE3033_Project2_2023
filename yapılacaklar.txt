@@ -1,3 +1,4 @@
 - exit de sıkıntı var
 - bookmark -i de sorun var
 - redirectionda da myshell geri gelmiyor .
+- search de sub directory yazdırmaya çalışacağım

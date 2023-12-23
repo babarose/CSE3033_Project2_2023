@@ -306,20 +306,23 @@ void searchFilesKaragulHelper(const char *filePath, const char *searchString)
     char line[MAX_LINE_SIZE];
     int lineNumber = 0;
 
-    // Sadece dosya adını al
-    const char *fileName = strrchr(filePath, '/');
-    fileName = (fileName != NULL) ? (fileName + 1) : filePath;
-
     while (fgets(line, sizeof(line), file) != NULL)
     {
         lineNumber++;
         if (strstr(line, searchString) != NULL)
         {
-            printf("%d: \t./%s \t-> \t%s", lineNumber, fileName, line);
+            printf("%-5d: %s -> %s", lineNumber, filePath, line);
         }
     }
 
     fclose(file);
+}
+
+void concatenatePaths(const char *path1, const char *path2, char *result)
+{
+    strcpy(result, path1);
+    strcat(result, "/");
+    strcat(result, path2);
 }
 
 void searchFilesKaragul(char *searchString, int recursive)
@@ -327,14 +330,15 @@ void searchFilesKaragul(char *searchString, int recursive)
     DIR *dir;
     struct dirent *entry;
     char currentDir[MAX_FILE_NAME_SIZE];
+    char startDir[MAX_FILE_NAME_SIZE];
 
-    if (getcwd(currentDir, sizeof(currentDir)) == NULL)
+    if (getcwd(startDir, sizeof(startDir)) == NULL)
     {
         perror("getcwd");
         return;
     }
 
-    if ((dir = opendir(currentDir)) == NULL)
+    if ((dir = opendir(startDir)) == NULL)
     {
         perror("opendir");
         return;
@@ -346,9 +350,7 @@ void searchFilesKaragul(char *searchString, int recursive)
         {
             // Dosyanın tam yolu
             char filePath[MAX_FILE_NAME_SIZE];
-            strcpy(filePath, currentDir);
-            strcat(filePath, "/");
-            strcat(filePath, entry->d_name);
+            concatenatePaths(startDir, entry->d_name, filePath);
 
             // Dosya uzantısını kontrol et
             size_t len = strlen(filePath);
@@ -363,36 +365,39 @@ void searchFilesKaragul(char *searchString, int recursive)
         else if (recursive && entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
         {
             char subDir[MAX_FILE_NAME_SIZE];
-            strcpy(subDir, currentDir);
-            strcat(subDir, "/");
-            strcat(subDir, entry->d_name);
+            concatenatePaths(startDir, entry->d_name, subDir);
 
             // Recursively search subdirectories
             if (chdir(subDir) == -1)
             {
                 perror("chdir");
+                closedir(dir);
                 return;
             }
 
             searchFilesKaragul(searchString, recursive);
 
-            if (chdir("..") == -1)
+            if (chdir(startDir) == -1)
             {
                 perror("chdir");
+                closedir(dir);
                 return;
             }
         }
     }
 
-    closedir(dir);
+    if (closedir(dir) == -1)
+    {
+        perror("closedir");
+    }
 }
 
 
 void redirection(char **args) {
     for (int i = 0; args[i] != NULL; ++i) {
-        printf("test 1"  );
+       
         if (strcmp(args[i], ">") == 0) {
-            printf("test"  );
+           
             char *outputFile = args[i + 1];
             int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY, 0666);
             if (redirection_fd == -1) {
