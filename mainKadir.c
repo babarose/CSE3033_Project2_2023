@@ -10,12 +10,14 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARG_SIZE 64
 #define MAX_FILE_NAME_SIZE 1024
 #define MAX_LINE_SIZE 512
 #define MAX_BOOKMARKS 10
+#define CREATE_MODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 
 void setup(char inputBuffer[], char *args[], int *background);
@@ -25,6 +27,8 @@ void searchFiles(const char *searchString, int recursive);
 void searchFilesKaragul(char *searchString, int recursive);
 void searchFilesKaragulHelper(const char *filePath, const char *searchString);
 void redirection(char **args);
+
+void unredirection() ;
 void addBookmark(const char *command);
 void listBookmarks();
 void executeBookmark(int index);
@@ -34,6 +38,12 @@ void exitShell();
 volatile sig_atomic_t isRunningInBackground = 0;
 char *bookmarks[MAX_BOOKMARKS];
 int bookmarkCount = 0;
+int redirection_fd = -1; // Dosya tanımlayıcısını global olarak tanımla
+int unRedirection = 0;
+int original_stdin;
+int original_stdout;
+int original_stderr;
+
 
 
 // Signal handler function
@@ -52,6 +62,10 @@ int main() {
     char inputBuffer[MAX_INPUT_SIZE];
     char *args[MAX_ARG_SIZE];
     int background;
+    original_stdin = dup(STDIN_FILENO);  // Save the original file descriptor for stdin
+    original_stdout = dup(STDOUT_FILENO);  // Save the original file descriptor for stdout
+    original_stderr = dup(STDERR_FILENO);  // Save the original file descriptor for stderr
+
 
     while (1) {
         background = 0;
@@ -142,8 +156,9 @@ int main() {
         }    
         else //part A
         {
-            redirection(args);
+            redirection(args); // Redirection işlemi
             executeCommand(args, background);
+            unredirection(); // Unredirection işlemi
         }
     }
 
@@ -396,60 +411,61 @@ void searchFilesKaragul(char *searchString, int recursive)
 
 
 void redirection(char **args) {
-    for (int i = 0; args[i] != NULL; ++i) {
-       
-        if (strcmp(args[i], ">") == 0) {
-           
-            char *outputFile = args[i + 1];
-            int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY, 0666);
-            if (redirection_fd == -1) {
-                perror("open");
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], ">") == 0 || strcmp(args[i], ">>") == 0 || strcmp(args[i], "2>") == 0 || strcmp(args[i], "<") == 0) {
+            // Check if there is a filename after the operator
+            if (args[i + 1] != NULL) {
+                char *fileName = args[i + 1];
+
+                if (redirection_fd != -1) {
+                    // Eğer önceki bir dosya tanımlayıcısı açıldıysa, kapatın
+                    close(redirection_fd);
+                }
+
+                if (strcmp(args[i], ">") == 0) {
+                    redirection_fd = open(fileName, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+                    dup2(redirection_fd, STDOUT_FILENO);
+
+                } else if (strcmp(args[i], ">>") == 0) {
+                    redirection_fd = open(fileName, O_CREAT | O_APPEND | O_WRONLY, 0666);
+                    dup2(redirection_fd, STDOUT_FILENO);
+                } else if (strcmp(args[i], "2>") == 0) {
+                    redirection_fd = open(fileName, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+                    dup2(redirection_fd, STDERR_FILENO);
+                } else if (strcmp(args[i], "<") == 0) {
+                    redirection_fd = open(fileName, O_RDONLY);
+                    dup2(redirection_fd, STDIN_FILENO);
+                }
+
+                if (redirection_fd == -1) {
+                    perror("open");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Remove the operator and filename from arguments
+                args[i] = NULL;
+                args[i + 1] = NULL;
+                unRedirection = 1;
+            } else {
+                fprintf(stderr, "Error: Missing filename after %s\n", args[i]);
                 exit(EXIT_FAILURE);
             }
-            dup2(redirection_fd, STDOUT_FILENO);
-            close(redirection_fd);
-
-            args[i] = NULL; // Remove ">" from arguments
-            args[i + 1] = NULL; // Remove the output file name
-        } else if (strcmp(args[i], ">>") == 0) {
-            char *outputFile = args[i + 1];
-            int redirection_fd = open(outputFile, O_CREAT | O_APPEND | O_WRONLY, 0666);
-            if (redirection_fd == -1) {
-                perror("open");
-                exit(EXIT_FAILURE);
-            }
-            dup2(redirection_fd, STDOUT_FILENO);
-            close(redirection_fd);
-
-            args[i] = NULL; // Remove ">>" from arguments
-            args[i + 1] = NULL; // Remove the output file name
-        } else if (strcmp(args[i], "2>") == 0) {
-            char *outputFile = args[i + 1];
-            int redirection_fd = open(outputFile, O_CREAT | O_TRUNC | O_WRONLY, 0666);
-            if (redirection_fd == -1) {
-                perror("open");
-                exit(EXIT_FAILURE);
-            }
-            dup2(redirection_fd, STDERR_FILENO);
-            close(redirection_fd);
-
-            args[i] = NULL; // Remove "2>" from arguments
-            args[i + 1] = NULL; // Remove the output file name
-        } else if (strcmp(args[i], "<") == 0) {
-            char *inputFile = args[i + 1];
-            int redirection_fd = open(inputFile, O_RDONLY);
-            if (redirection_fd == -1) {
-                perror("open");
-                exit(EXIT_FAILURE);
-            }
-            dup2(redirection_fd, STDIN_FILENO);
-            close(redirection_fd);
-
-            args[i] = NULL; // Remove "<" from arguments
-            args[i + 1] = NULL; // Remove the input file name
         }
     }
 }
+
+void unredirection() {
+    if (unRedirection) {
+        close(redirection_fd);
+        dup2(original_stdin, STDIN_FILENO);
+        dup2(original_stdout, STDOUT_FILENO);
+        dup2(original_stderr, STDERR_FILENO);
+        unRedirection = 0;
+
+    }
+}
+
+
 void addBookmark(const char *command) {
     if (bookmarkCount < MAX_BOOKMARKS) {
         bookmarks[bookmarkCount++] = strdup(command);
